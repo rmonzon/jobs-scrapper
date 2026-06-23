@@ -23,6 +23,11 @@ DASHBOARD = ROOT / "dashboard.html"
 # Serialize refreshes so two button presses can't run the pipeline concurrently
 # and clobber each other's snapshot writes.
 _refresh_lock = threading.Lock()
+# Serialize preference writes so concurrent tabs can't corrupt the file.
+_prefs_lock = threading.Lock()
+
+# Reject absurd preference payloads outright (the real thing is a few KB).
+_MAX_PREFS_BYTES = 5_000_000
 
 
 def _run_pipeline() -> int:
@@ -41,19 +46,29 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        if self.path.split("?")[0] in ("/", "/index.html", "/dashboard.html"):
+        path = self.path.split("?")[0]
+        if path in ("/", "/index.html", "/dashboard.html"):
             if not DASHBOARD.exists():
                 self._send(503, b"dashboard not generated yet; run python3 run.py",
                            "text/plain; charset=utf-8")
                 return
             self._send(200, DASHBOARD.read_bytes(), "text/html; charset=utf-8")
-        elif self.path == "/api/health":
+        elif path == "/api/health":
             self._send(200, b'{"ok":true}', "application/json")
+        elif path == "/api/prefs":
+            from scraper import prefs as prefs_store
+            with _prefs_lock:
+                data = prefs_store.load_prefs(DATA_DIR)
+            self._send(200, json.dumps(data).encode(), "application/json")
         else:
             self._send(404, b"not found", "text/plain; charset=utf-8")
 
     def do_POST(self):
-        if self.path != "/api/refresh":
+        path = self.path.split("?")[0]
+        if path == "/api/prefs":
+            self._save_prefs()
+            return
+        if path != "/api/refresh":
             self._send(404, b"not found", "text/plain; charset=utf-8")
             return
         # If a refresh is already running, don't queue another — just report busy.
@@ -65,6 +80,24 @@ class Handler(BaseHTTPRequestHandler):
             self._run_and_respond()
         finally:
             _refresh_lock.release()
+
+    def _save_prefs(self):
+        length = int(self.headers.get("Content-Length") or 0)
+        if length <= 0 or length > _MAX_PREFS_BYTES:
+            self._send(400, b'{"ok":false,"error":"bad payload size"}',
+                       "application/json")
+            return
+        try:
+            body = json.loads(self.rfile.read(length))
+        except ValueError:
+            self._send(400, b'{"ok":false,"error":"invalid json"}',
+                       "application/json")
+            return
+        from scraper import prefs as prefs_store
+        with _prefs_lock:
+            saved = prefs_store.save_prefs(DATA_DIR, body)
+        self._send(200, json.dumps({"ok": True, **saved}).encode(),
+                   "application/json")
 
     def _run_and_respond(self):
         try:

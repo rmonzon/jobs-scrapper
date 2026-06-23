@@ -22,6 +22,7 @@ import os
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+from scraper import prefs as prefs_store
 from scraper import store
 
 
@@ -116,6 +117,9 @@ def collect(data_dir: Path, config: dict) -> dict:
         "total_jobs": len(jobs),
         "new_count": len(new_ids_today),
         "remote_count": remote_count,
+        # Followed / dismissed roles, embedded so the page renders correctly on
+        # first paint (over HTTP the dashboard then reconciles via /api/prefs).
+        "prefs": prefs_store.load_prefs(data_dir),
     }
 
 
@@ -285,10 +289,49 @@ _TEMPLATE = r"""<!DOCTYPE html>
   .view:hover { background: oklch(0.22 0.06 252); }
   .empty { padding: 48px; text-align: center; color: var(--muted); font-size: 14px; }
 
+  /* Per-row action buttons (track / dismiss) */
+  .c-act { width: 70px; flex-shrink: 0; }
+  .acts { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+  .iconbtn { width: 28px; height: 28px; display: grid; place-items: center; padding: 0;
+    border-radius: 7px; border: 1.5px solid var(--inputbd); background: transparent;
+    color: var(--muted2); font-size: 14px; line-height: 1; cursor: pointer;
+    transition: color .12s, border-color .12s, background .12s; }
+  .iconbtn:hover { border-color: oklch(0.34 0.02 260); color: var(--text-hi); }
+  .iconbtn.track.on { color: oklch(0.82 0.16 85); border-color: oklch(0.5 0.12 85);
+    background: oklch(0.24 0.07 85); }
+  .iconbtn.drop:hover { color: oklch(0.72 0.18 25); border-color: oklch(0.45 0.14 25);
+    background: oklch(0.22 0.06 25); }
+
+  /* Tracked / following panel — pinned at the top, always visible */
+  .tracked { margin: 16px 32px 0; background: var(--panel);
+    border: 1px solid oklch(0.34 0.07 85); border-radius: 12px; overflow: hidden; }
+  .tracked-head { display: flex; align-items: center; gap: 10px; padding: 11px 20px;
+    border-bottom: 1px solid var(--line); background: oklch(0.19 0.035 85); }
+  .tracked-title { font-size: 11px; font-weight: 700; color: oklch(0.84 0.15 85);
+    letter-spacing: .1em; text-transform: uppercase; }
+  .tracked-ct { font-size: 12px; color: var(--muted2); }
+
+  /* No-longer-available highlight (tracked role that vanished from the feed) */
+  .row.gone { background: oklch(0.2 0.045 25); border-left-color: oklch(0.6 0.18 25); }
+  .row.gone:hover { background: oklch(0.22 0.05 25); }
+  .row.gone .title { color: oklch(0.8 0.07 25); text-decoration: line-through;
+    text-decoration-color: oklch(0.5 0.12 25); }
+  .badge.gone { background: oklch(0.58 0.19 25); color: #fff; letter-spacing: .04em; }
+  .row.hiddenrow { opacity: .55; }
+
+  /* "Show hidden" toggle in the filter bar */
+  .hidebtn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 13px;
+    border-radius: 8px; border: 1.5px solid var(--inputbd); background: var(--input);
+    color: var(--muted2); font: 600 12px 'DM Sans', sans-serif; cursor: pointer;
+    white-space: nowrap; }
+  .hidebtn:hover { color: var(--text-hi); border-color: oklch(0.34 0.02 260); }
+  .hidebtn.on { color: var(--text-hi); border-color: oklch(0.4 0.08 252);
+    background: oklch(0.22 0.05 252); }
+
   @media (max-width: 720px) {
     .nav, .head, .banner, .stats, .panel { padding-left: 16px; padding-right: 16px; }
     .nav, .head { padding-left: 16px; padding-right: 16px; }
-    .banner, .panel { margin-left: 16px; margin-right: 16px; }
+    .banner, .panel, .tracked { margin-left: 16px; margin-right: 16px; }
     .stats { grid-template-columns: 1fr 1fr; }
     .c-loc, .thead .c-loc, .c-upd, .thead .c-upd { display: none; }
   }
@@ -312,6 +355,14 @@ _TEMPLATE = r"""<!DOCTYPE html>
     <span class="d"></span>
     <span class="txt" id="bannerTxt"></span>
     <span class="ct" id="bannerCt"></span>
+  </div>
+
+  <div class="tracked" id="tracked" style="display:none">
+    <div class="tracked-head">
+      <span class="tracked-title">★ Following</span>
+      <span class="tracked-ct" id="trackedCt"></span>
+    </div>
+    <div id="trackedRows"></div>
   </div>
 
   <div class="stats">
@@ -340,6 +391,7 @@ _TEMPLATE = r"""<!DOCTYPE html>
         </select>
         <svg class="caret" width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 4l4 4 4-4" stroke="oklch(0.55 0.04 260)" stroke-width="1.5" stroke-linecap="round"></path></svg>
       </div>
+      <button class="hidebtn" id="hideToggle" type="button" style="display:none"></button>
     </div>
 
     <div class="thead">
@@ -349,6 +401,7 @@ _TEMPLATE = r"""<!DOCTYPE html>
       <div class="h c-loc">Location</div>
       <div class="h c-upd">Updated</div>
       <div class="c-view"></div>
+      <div class="c-act"></div>
     </div>
 
     <div id="rows"></div>
@@ -403,26 +456,141 @@ function logoHtml(company, domain) {
   return `<span class="logo">${iniHtml(company)}</span>`;
 }
 
-function rowHtml(j) {
-  const badge = j.isNew ? `<div class="badge">NEW</div>` : "";
+// ---- Persistent per-user state (survives every dashboard rebuild) -----------
+// Followed/dismissed roles are saved server-side (data/preferences.json) when a
+// live server (serve.py) is actually answering, so they sync across
+// browsers/machines. On a static host (GitHub Pages) or over file:// there's no
+// server, so we fall back to per-browser localStorage. We feature-detect the
+// API rather than trusting the protocol: GitHub Pages is https:// but has no
+// backend. Tracked roles are stored as full snapshots so a followed job can
+// still be shown after it disappears from the live feed ("no longer available").
+let serverPrefs = false;   // set true only once /api/prefs answers
+const LS_TRACK = "jt_tracked_v1";   // { [id]: jobSnapshot }
+const LS_HIDE  = "jt_hidden_v1";    // [ id, ... ]
+function lsGet(k, def) { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? def; } catch { return def; } }
+function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+
+// Seed from the prefs embedded at build time so the first paint is correct;
+// initPrefs() then reconciles with the freshest source below.
+let tracked = (DATA.prefs && DATA.prefs.tracked) || {};
+let hidden = new Set((DATA.prefs && DATA.prefs.hidden) || []);
+let showHidden = false;
+
+// Jobs present in the current run, by id → used to detect tracked roles that
+// have since vanished, and to refresh stored snapshots with the latest data.
+const byId = new Map(DATA.jobs.map(j => [j.id, j]));
+
+// Persist the current state to its backing store (live server if one answered,
+// otherwise per-browser localStorage).
+function persist() {
+  if (serverPrefs) {
+    fetch("/api/prefs", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tracked, hidden: [...hidden] }) }).catch(() => {});
+  } else {
+    lsSet(LS_TRACK, tracked);
+    lsSet(LS_HIDE, [...hidden]);
+  }
+}
+
+// Load the authoritative state, refresh live snapshots, then do the first paint.
+async function initPrefs() {
+  if (location.protocol.startsWith("http")) {
+    try {
+      const r = await fetch("/api/prefs");
+      if (r.ok) { const p = await r.json();
+        tracked = p.tracked || {}; hidden = new Set(p.hidden || []);
+        serverPrefs = true; }
+    } catch {}
+  }
+  if (!serverPrefs) {  // static host (GitHub Pages) or file:// → local fallback
+    const t = lsGet(LS_TRACK, null), h = lsGet(LS_HIDE, null);
+    if (t) tracked = t;
+    if (h) hidden = new Set(h);
+  }
+  // Keep snapshots of still-live tracked roles current with the latest fetch.
+  let dirty = false;
+  for (const id of Object.keys(tracked)) {
+    if (byId.has(id)) { tracked[id] = byId.get(id); dirty = true; }
+  }
+  if (dirty) persist();
+  render();
+}
+
+function toggleTrack(id) {
+  if (tracked[id]) delete tracked[id];
+  else { const j = byId.get(id) || tracked[id]; if (j) tracked[id] = j; }
+  persist();
+  renderAll();
+}
+function toggleHide(id) {
+  if (hidden.has(id)) hidden.delete(id); else hidden.add(id);
+  persist();
+  renderAll();
+}
+// One delegated listener handles every row's track / dismiss button.
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-act]");
+  if (!btn) return;
+  const id = btn.getAttribute("data-id");
+  if (btn.dataset.act === "track") toggleTrack(id);
+  else if (btn.dataset.act === "hide") toggleHide(id);
+});
+
+function actionsHtml(j, ctx) {
+  const isTracked = !!tracked[j.id];
+  const star = `<button class="iconbtn track${isTracked ? " on" : ""}" data-act="track" data-id="${esc(j.id)}" title="${isTracked ? "Stop following" : "Follow this role"}" aria-label="${isTracked ? "Stop following" : "Follow this role"}">${isTracked ? "★" : "☆"}</button>`;
+  if (ctx === "tracked") return `<div class="acts">${star}</div>`;
+  const isHidden = hidden.has(j.id);
+  const drop = `<button class="iconbtn drop" data-act="hide" data-id="${esc(j.id)}" title="${isHidden ? "Restore to list" : "Not interested — hide this role"}" aria-label="${isHidden ? "Restore to list" : "Not interested"}">${isHidden ? "↩" : "✕"}</button>`;
+  return `<div class="acts">${star}${drop}</div>`;
+}
+
+function rowHtml(j, ctx) {
+  const gone = ctx === "tracked" && !byId.has(j.id);
+  const badge = gone ? `<div class="badge gone">GONE</div>`
+    : (j.isNew ? `<div class="badge">NEW</div>` : "");
   const chipCls = j.remote ? "chip remote" : "chip onsite";
   const loc = j.location ? `<div class="${chipCls}">${esc(j.location)}</div>` : "";
   const view = j.url ? `<a class="view" href="${esc(j.url)}" target="_blank" rel="noopener">View →</a>` : `<span class="c-view"></span>`;
-  return `<div class="row${j.isNew ? " new" : ""}">
+  const cls = "row" + (gone ? " gone" : (j.isNew ? " new" : ""))
+    + (ctx === "main" && hidden.has(j.id) ? " hiddenrow" : "");
+  const upd = gone ? "no longer listed" : (j.updated || "—");
+  return `<div class="${cls}">
     <div class="c-logo">${logoHtml(j.company, j.domain)}</div>
     <div class="c-role"><div class="title">${esc(j.title)}</div><div class="co">${esc(j.company)}</div></div>
     <div class="c-status">${badge}</div>
     <div class="c-loc">${loc}</div>
-    <div class="c-upd upd">${esc(j.updated || "—")}</div>
+    <div class="c-upd upd">${esc(upd)}</div>
     ${view}
+    <div class="c-act">${actionsHtml(j, ctx)}</div>
   </div>`;
 }
 
+function renderTracked() {
+  const items = Object.values(tracked);
+  const panel = $("tracked");
+  if (!items.length) { panel.style.display = "none"; return; }
+  // Vanished roles float to the top so they catch the eye; then newest-first.
+  items.sort((a, b) => (byId.has(b.id) ? 0 : 1) - (byId.has(a.id) ? 0 : 1)
+    || (Number(b.isNew) - Number(a.isNew))
+    || a.company.localeCompare(b.company));
+  const goneCount = items.filter(j => !byId.has(j.id)).length;
+  panel.style.display = "block";
+  $("trackedCt").textContent = items.length + (items.length === 1 ? " role" : " roles")
+    + (goneCount ? ` · ${goneCount} no longer available` : "");
+  $("trackedRows").innerHTML = items.map(j => rowHtml(j, "tracked")).join("");
+}
+
 function render() {
+  renderTracked();
   const q = $("search").value.trim().toLowerCase();
   const co = sel.value;
   const lf = $("loc").value;
   const rows = DATA.jobs.filter(j => {
+    if (tracked[j.id]) return false;                 // shown in the Following panel
+    if (!showHidden && hidden.has(j.id)) return false;
+    if (showHidden && !hidden.has(j.id)) return false;
     if (co && j.company !== co) return false;
     if (lf === "remote" && !j.remote) return false;
     if (lf === "onsite" && j.remote) return false;
@@ -430,9 +598,26 @@ function render() {
     return true;
   });
   $("bannerCt").textContent = rows.length + " of " + DATA.total_jobs + " jobs";
-  $("rows").innerHTML = rows.map(rowHtml).join("");
-  $("empty").style.display = rows.length ? "none" : "block";
+  $("rows").innerHTML = rows.map(j => rowHtml(j, "main")).join("");
+  const emptyEl = $("empty");
+  emptyEl.style.display = rows.length ? "none" : "block";
+  emptyEl.textContent = showHidden
+    ? "Nothing hidden yet — use ✕ on a role to mark it as not interested."
+    : "No jobs match your current filters.";
+
+  // "Show hidden" toggle reflects the current count.
+  const hb = $("hideToggle");
+  if (hidden.size) {
+    hb.style.display = "inline-flex";
+    hb.classList.toggle("on", showHidden);
+    hb.textContent = (showHidden ? "Hide dismissed · " : "Show dismissed · ") + hidden.size;
+  } else {
+    hb.style.display = "none";
+    showHidden = false;
+  }
 }
+const renderAll = render;
+$("hideToggle").addEventListener("click", () => { showHidden = !showHidden; render(); });
 $("search").addEventListener("input", render);
 sel.addEventListener("change", render);
 $("loc").addEventListener("change", render);
@@ -458,7 +643,7 @@ $("refresh").addEventListener("click", async () => {
   location.reload();
 });
 
-render();
+initPrefs();
 </script>
 </body>
 </html>
