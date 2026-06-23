@@ -1,0 +1,20 @@
+{
+  "logo_dev": {
+    "publishable_token": "pk_PmGA89lJSD2YIbv9j0Wohg"
+  },
+  "filters": {
+    "us_only": true,
+    "include_unspecified_remote": false,
+    "keywords": ["fullstack", "full-stack", "full stack",
+                 "frontend", "front end", "front-end", "ui", "web"]
+  },
+  "companies": [
+    { "company": "Airbnb",    "provider": "greenhouse", "slug": "airbnb",    "domain": "airbnb.com" },
+    { "company": "Instacart",  "provider": "greenhouse", "slug": "instacart", "domain": "instacart.com" },
+    { "company": "Stripe",     "provider": "greenhouse", "slug": "stripe",    "domain": "stripe.com" },
+    { "company": "Pinterest",  "provider": "greenhouse", "slug": "pinterest", "domain": "pinterest.com" },
+    { "company": "Reddit",     "provider": "greenhouse", "slug": "reddit",    "domain": "reddit.com" },
+    { "company": "Netflix",    "provider": "eightfold",  "slug": "netflix",   "domain": "netflix.com",
+      "base_url": "https://explore.jobs.netflix.net" }
+  ]
+}

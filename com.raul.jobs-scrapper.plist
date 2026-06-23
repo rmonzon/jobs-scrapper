@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd agent: runs the job tracker nightly at 07:00 local time.
+
+  Install:
+    cp com.raul.jobs-scrapper.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.raul.jobs-scrapper.plist
+
+  Run once now to test:
+    launchctl start com.raul.jobs-scrapper
+
+  Uninstall:
+    launchctl unload ~/Library/LaunchAgents/com.raul.jobs-scrapper.plist
+
+  To enable email, fill in the EnvironmentVariables block below (use a Gmail
+  App Password, not your account password) and reload the agent.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.raul.jobs-scrapper</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/python3</string>
+        <string>/Users/rrivero/Desktop/personal-projects/jobs-scrapper/run.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/rrivero/Desktop/personal-projects/jobs-scrapper</string>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>7</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/rrivero/Desktop/personal-projects/jobs-scrapper/data/run.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/rrivero/Desktop/personal-projects/jobs-scrapper/data/run.log</string>
+
+    <!--
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>JOBS_SMTP_HOST</key><string>smtp.gmail.com</string>
+        <key>JOBS_SMTP_PORT</key><string>587</string>
+        <key>JOBS_SMTP_USER</key><string>raul9501@gmail.com</string>
+        <key>JOBS_SMTP_PASS</key><string>your-app-password</string>
+        <key>JOBS_SMTP_TO</key><string>raul9501@gmail.com</string>
+    </dict>
+    -->
+</dict>
+</plist>

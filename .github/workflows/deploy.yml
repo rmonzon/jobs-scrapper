@@ -1,0 +1,66 @@
+name: Update & Deploy Dashboard
+
+# Re-scrapes nightly in the cloud and publishes dashboard.html to GitHub Pages.
+# Pure stdlib, so no dependency install step is needed.
+
+on:
+  schedule:
+    # 13:00 UTC daily (~6am PT / 9am ET). Adjust to taste — cron is in UTC.
+    - cron: "0 13 * * *"
+  workflow_dispatch: {}   # also runnable on demand from the Actions tab
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Don't let two Pages deploys overlap.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Persist the tracker's state (snapshots + discovery feed) between runs so
+      # diffing and NEW badges work. A unique key per run always saves a fresh
+      # cache; restore-keys grabs the most recent prior one. If the cache is ever
+      # evicted, run.py simply re-seeds silently (no flood of false "new" jobs).
+      - name: Restore tracker state
+        uses: actions/cache@v4
+        with:
+          path: data
+          key: jobstate-${{ github.run_id }}
+          restore-keys: jobstate-
+
+      - name: Run scraper & generate dashboard
+        env:
+          # Optional: set a LOGO_DEV_TOKEN repo secret to avoid committing it.
+          # Falls back to the token in config.json if unset.
+          LOGO_DEV_TOKEN: ${{ secrets.LOGO_DEV_TOKEN }}
+        run: python3 run.py
+
+      - name: Assemble Pages site
+        run: |
+          mkdir -p site
+          cp dashboard.html site/index.html
+          touch site/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
