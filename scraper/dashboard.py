@@ -261,10 +261,10 @@ _TEMPLATE = r"""<!DOCTYPE html>
   .row:hover { background: oklch(0.205 0.018 260); }
   .row.new { background: oklch(0.215 0.048 252); border-left-color: var(--blue2); }
   .row.new:hover { background: oklch(0.23 0.052 252); }
-  .logo { width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0; background: #fff;
+  .logo { width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0;
     display: grid; place-items: center; overflow: hidden;
     box-shadow: inset 0 0 0 1px #ffffff1a; }
-  .logo img { width: 100%; height: 100%; object-fit: contain; padding: 5px; }
+  .logo img { width: 100%; height: 100%; object-fit: contain; }
   .logo .ini { width: 100%; height: 100%; display: grid; place-items: center;
     color: #fff; font-weight: 700; font-size: 12px; }
   .title { font-size: 14px; font-weight: 600; color: oklch(0.92 0.01 260);
