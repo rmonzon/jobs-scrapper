@@ -79,6 +79,8 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def serve(host: str = "127.0.0.1", port: int = 8787) -> None:
+    from scraper.env import load_env
+    load_env(ROOT / ".env")
     # Make sure there's something to serve on first launch.
     if not DASHBOARD.exists():
         from scraper.dashboard import build_dashboard

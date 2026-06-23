@@ -467,6 +467,8 @@ render();
 
 if __name__ == "__main__":
     root = Path(__file__).resolve().parent.parent
+    from scraper.env import load_env
+    load_env(root / ".env")
     out = build_dashboard(root / "data", root / "dashboard.html",
                           root / "config.json")
     print(f"dashboard written to {out}")

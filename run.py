@@ -23,10 +23,12 @@ from datetime import date
 
 from scraper import adapters, store
 from scraper.dashboard import build_dashboard
+from scraper.env import load_env
 from scraper.filters import make_filter
 from scraper.notify import notify
 
 ROOT = Path(__file__).resolve().parent
+load_env(ROOT / ".env")
 
 
 def load_config(path: Path) -> tuple[list[dict], dict]:

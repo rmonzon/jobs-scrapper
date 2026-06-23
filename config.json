@@ -1,6 +1,7 @@
 {
   "logo_dev": {
-    "publishable_token": "pk_PmGA89lJSD2YIbv9j0Wohg"
+    "_comment": "Token is read from the LOGO_DEV_TOKEN env var (local: gitignored .env; cloud: GitHub Actions secret). Leave blank so it is never committed.",
+    "publishable_token": ""
   },
   "filters": {
     "us_only": true,
