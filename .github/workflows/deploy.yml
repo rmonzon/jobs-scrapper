@@ -5,10 +5,11 @@ name: Update & Deploy Dashboard
 
 on:
   schedule:
-    # 12:00 UTC = 7am EST. GitHub cron is fixed-UTC and does NOT follow DST, so
-    # during Eastern Daylight Time (summer) this fires at 8am local. For 7am
-    # year-round during EDT instead, use "0 11 * * *".
-    - cron: "0 12 * * *"
+    # 11:07 UTC = 7:07am EDT (summer) / 6:07am EST (winter). GitHub cron is
+    # fixed-UTC and does NOT follow DST, so a single cron can't be 7am in both
+    # seasons. We optimize for 7am during EDT. The :07 offset avoids the top of
+    # the hour, which is GitHub's most congested (and most-dropped) slot.
+    - cron: "7 11 * * *"
   workflow_dispatch: {}   # also runnable on demand from the Actions tab
 
 permissions:
