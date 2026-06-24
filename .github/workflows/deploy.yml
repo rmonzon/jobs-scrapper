@@ -26,14 +26,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Persist the tracker's state (snapshots + discovery feed) between runs so
       # diffing and NEW badges work. A unique key per run always saves a fresh
       # cache; restore-keys grabs the most recent prior one. If the cache is ever
       # evicted, run.py simply re-seeds silently (no flood of false "new" jobs).
       - name: Restore tracker state
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: data
           key: jobstate-${{ github.run_id }}
@@ -53,7 +53,7 @@ jobs:
           touch site/.nojekyll
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
@@ -66,4 +66,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deploy
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
