@@ -12,6 +12,7 @@ a silent "seed": the snapshot is saved and no jobs are reported as new.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 STATE_DIRNAME = "state"
@@ -76,6 +77,35 @@ def record_events(data_dir: Path, company: str, new_jobs: list[dict],
     with tmp.open("w", encoding="utf-8") as f:
         json.dump(events, f, indent=2, ensure_ascii=False)
     tmp.replace(path)
+
+
+def _run_status_path(data_dir: Path) -> Path:
+    return data_dir / "run_status.json"
+
+
+def save_run_status(data_dir: Path, ok: bool, errors: list[str]) -> None:
+    """Record the outcome of the most recent run so the dashboard can show
+    whether the latest update succeeded."""
+    path = _run_status_path(data_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "ok": ok,
+        "errors": errors,
+        "finished_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    tmp = path.with_suffix(".json.tmp")
+    with tmp.open("w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False)
+    tmp.replace(path)
+
+
+def load_run_status(data_dir: Path) -> dict | None:
+    """Return the most recent run's outcome, or None if it was never recorded."""
+    path = _run_status_path(data_dir)
+    if not path.exists():
+        return None
+    with path.open(encoding="utf-8") as f:
+        return json.load(f)
 
 
 def diff(previous: dict | None, jobs: list[dict]) -> dict:

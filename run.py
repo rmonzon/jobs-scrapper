@@ -76,9 +76,15 @@ def run(config_path: Path, data_dir: Path, seed: bool) -> int:
         time.sleep(1)  # be a polite API citizen between companies
 
     notify(data_dir, results)
+
+    # Record the run outcome (drives the dashboard's "update succeeded" badge)
+    # before regenerating the page, so collect() picks up the fresh status.
+    errors = [f"{r['company']}: {r['error']}" for r in results if r["error"]]
+    store.save_run_status(data_dir, ok=not errors, errors=errors)
+
     out = build_dashboard(data_dir, ROOT / "dashboard.html", config_path)
     print(f"[dashboard] {out}")
-    return 1 if any(r["error"] for r in results) else 0
+    return 1 if errors else 0
 
 
 def main() -> None:

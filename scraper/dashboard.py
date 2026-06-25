@@ -107,9 +107,15 @@ def collect(data_dir: Path, config: dict) -> dict:
     # New roles first, then alphabetical by company + title.
     jobs.sort(key=lambda j: (not j["isNew"], j["company"].lower(), j["title"].lower()))
 
+    # Machine-readable UTC instant; the browser formats it in the viewer's own
+    # timezone. (Pre-formatting here would bake in the build machine's zone —
+    # UTC on the CI runner — which is wrong for everyone reading it elsewhere.)
+    status = store.load_run_status(data_dir) or {}
+
     return {
-        "generated_at": datetime.now(timezone.utc)
-        .astimezone().strftime("%b %-d, %-I:%M %p"),
+        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "update_ok": status.get("ok", True),
+        "update_errors": status.get("errors", []),
         "logo_token": os.environ.get("LOGO_DEV_TOKEN")
         or config.get("logo_dev", {}).get("publishable_token", ""),
         "companies": sorted(companies, key=lambda c: c["company"]),
@@ -192,6 +198,11 @@ _TEMPLATE = r"""<!DOCTYPE html>
     animation: pring 2s ease-out infinite; }
   .live span { font-size: 11px; font-weight: 600; color: var(--green); }
   .nav .upd { margin-left: auto; font-size: 12px; color: oklch(0.48 0.04 260); }
+  .upd-status { display: inline-flex; align-items: center; justify-content: center;
+    width: 16px; height: 16px; margin-left: 2px; border-radius: 50%;
+    font-size: 11px; line-height: 1; cursor: default; }
+  .upd-status.ok { color: var(--green); background: oklch(0.20 0.08 148); }
+  .upd-status.warn { color: oklch(0.78 0.16 75); background: oklch(0.24 0.07 75); }
   .refresh { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px;
     border-radius: 7px; border: 1.5px solid oklch(0.28 0.02 260); background: transparent;
     color: oklch(0.75 0.04 260); font: 600 12px 'DM Sans', sans-serif; cursor: pointer; }
@@ -343,6 +354,7 @@ _TEMPLATE = r"""<!DOCTYPE html>
     <span class="brand">JobTracker</span>
     <span class="live"><span class="d"></span><span>Live</span></span>
     <span class="upd" id="upd"></span>
+    <span class="upd-status" id="updStatus" hidden></span>
     <button class="refresh" id="refresh"><span class="ic">↻</span><span id="refreshLabel">Refresh</span></button>
   </div>
 
@@ -418,7 +430,32 @@ const COLORS = ["#6f9bff","#8b6fff","#ff6f91","#ffa14a","#34d399","#22b8cf","#e8
 const esc = (s) => (s||"").replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
 
 // Header / stats
-$("upd").textContent = "Updated " + DATA.generated_at;
+// generated_at is an ISO-8601 UTC instant; format it in the viewer's own
+// timezone. Fall back to the raw value if it's ever not a parseable date.
+function fmtUpdated(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleString(undefined, {
+    month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+  });
+}
+$("upd").textContent = "Updated " + fmtUpdated(DATA.generated_at);
+
+// Show whether the latest update completed cleanly.
+(function () {
+  const s = $("updStatus");
+  if (DATA.update_ok) {
+    s.textContent = "✓";              // ✓
+    s.className = "upd-status ok";
+    s.title = "Last update completed successfully";
+  } else {
+    s.textContent = "!";
+    s.className = "upd-status warn";
+    const errs = DATA.update_errors || [];
+    s.title = "Last update had problems:\n" + (errs.length ? errs.join("\n") : "see logs");
+  }
+  s.hidden = false;
+})();
 $("stNew").textContent = DATA.new_count;
 $("stTotal").textContent = DATA.total_jobs;
 $("stCos").textContent = DATA.companies.length;
@@ -622,8 +659,9 @@ $("search").addEventListener("input", render);
 sel.addEventListener("change", render);
 $("loc").addEventListener("change", render);
 
-// Refresh: over HTTP (serve.py) it triggers a real re-fetch, then reloads.
-// Over file:// there's no server, so it just reloads the static file.
+// Refresh: over HTTP via serve.py it triggers a real re-fetch, then reloads.
+// On a static host (GitHub Pages) or file://, there's no backend to re-scrape,
+// so it just reloads the latest published page instead of reporting a failure.
 $("refresh").addEventListener("click", async () => {
   const b = $("refresh");
   if (b.classList.contains("busy")) return;
@@ -631,6 +669,9 @@ $("refresh").addEventListener("click", async () => {
   if (location.protocol.startsWith("http")) {
     try {
       const r = await fetch("/api/refresh", { method: "POST" });
+      // No backend on this host (e.g. GitHub Pages): the endpoint doesn't
+      // exist, so just reload the published page rather than showing a failure.
+      if (r.status === 404 || r.status === 405) { location.reload(); return; }
       if (!r.ok) throw new Error(r.status);
     } catch (e) {
       $("refreshLabel").textContent = "Refresh failed";
