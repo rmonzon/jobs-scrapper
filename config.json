@@ -15,6 +15,7 @@
     { "company": "Stripe",     "provider": "greenhouse", "slug": "stripe",    "domain": "stripe.com" },
     { "company": "Pinterest",  "provider": "greenhouse", "slug": "pinterest", "domain": "pinterest.com" },
     { "company": "Reddit",     "provider": "greenhouse", "slug": "reddit",    "domain": "reddit.com" },
+    { "company": "Databricks", "provider": "greenhouse", "slug": "databricks", "domain": "databricks.com" },
     { "company": "Netflix",    "provider": "eightfold",  "slug": "netflix",   "domain": "netflix.com",
       "base_url": "https://explore.jobs.netflix.net" }
   ]
