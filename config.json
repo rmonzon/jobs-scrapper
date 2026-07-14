@@ -17,6 +17,8 @@
     { "company": "Reddit",     "provider": "greenhouse", "slug": "reddit",    "domain": "reddit.com" },
     { "company": "Databricks", "provider": "greenhouse", "slug": "databricks", "domain": "databricks.com" },
     { "company": "Dropbox",    "provider": "greenhouse", "slug": "dropbox",   "domain": "dropbox.com" },
+    { "company": "Anthropic",  "provider": "greenhouse", "slug": "anthropic", "domain": "anthropic.com" },
+    { "company": "OpenAI",     "provider": "ashby",      "slug": "openai",    "domain": "openai.com" },
     { "company": "Netflix",    "provider": "eightfold",  "slug": "netflix",   "domain": "netflix.com",
       "base_url": "https://explore.jobs.netflix.net" }
   ]
