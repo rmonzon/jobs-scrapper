@@ -288,9 +288,9 @@ _TEMPLATE = r"""<!DOCTYPE html>
   .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px;
     background: var(--blue2); color: oklch(0.12 0.02 260); font-size: 10px; font-weight: 700;
     letter-spacing: .08em; }
-  .chip { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px;
+  .chip { display: inline-block; padding: 3px 10px; border-radius: 999px;
     font-size: 12px; font-weight: 500; white-space: nowrap; max-width: 100%;
-    overflow: hidden; text-overflow: ellipsis; }
+    overflow: hidden; text-overflow: ellipsis; vertical-align: middle; box-sizing: border-box; }
   .chip.remote { background: oklch(0.25 0.1 160); color: oklch(0.72 0.16 160); }
   .chip.onsite { background: oklch(0.24 0.03 240); color: oklch(0.72 0.05 240); }
   .upd { font-size: 12px; color: var(--muted); }
@@ -588,7 +588,7 @@ function rowHtml(j, ctx) {
   const badge = gone ? `<div class="badge gone">GONE</div>`
     : (j.isNew ? `<div class="badge">NEW</div>` : "");
   const chipCls = j.remote ? "chip remote" : "chip onsite";
-  const loc = j.location ? `<div class="${chipCls}">${esc(j.location)}</div>` : "";
+  const loc = j.location ? `<div class="${chipCls}" title="${esc(j.location)}">${esc(j.location)}</div>` : "";
   const view = j.url ? `<a class="view" href="${esc(j.url)}" target="_blank" rel="noopener">View →</a>` : `<span class="c-view"></span>`;
   const cls = "row" + (gone ? " gone" : (j.isNew ? " new" : ""))
     + (ctx === "main" && hidden.has(j.id) ? " hiddenrow" : "");
