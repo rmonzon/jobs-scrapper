@@ -1,4 +1,4 @@
-# jobs-scrapper
+# jobs-scraper
 
 Nightly tracker for new job postings at companies you want to work for. Pulls
 open roles straight from each company's ATS JSON API, diffs against the previous
@@ -80,10 +80,14 @@ For Eightfold, also provide `domain` and `base_url` (see Netflix in config.json)
 
 ## Nightly schedule (macOS, launchd)
 
+Replace `/absolute/path/to/jobs-scraper` in the plist with the absolute path
+to your checkout and set the Python executable to the path from `command -v python3`.
+If you installed the previous agent, unload it before loading the renamed one.
+
 ```bash
-cp com.raul.jobs-scrapper.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.raul.jobs-scrapper.plist
-launchctl start com.raul.jobs-scrapper   # run once now to test
+cp com.raul.jobs-scraper.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.raul.jobs-scraper.plist
+launchctl start com.raul.jobs-scraper   # run once now to test
 ```
 
 Runs daily at 07:00. Logs to `data/run.log`. Unload with `launchctl unload …`.

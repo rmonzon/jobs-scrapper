@@ -3,14 +3,14 @@
   launchd agent: runs the job tracker nightly at 07:00 local time.
 
   Install:
-    cp com.raul.jobs-scrapper.plist ~/Library/LaunchAgents/
-    launchctl load ~/Library/LaunchAgents/com.raul.jobs-scrapper.plist
+    cp com.raul.jobs-scraper.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.raul.jobs-scraper.plist
 
   Run once now to test:
-    launchctl start com.raul.jobs-scrapper
+    launchctl start com.raul.jobs-scraper
 
   Uninstall:
-    launchctl unload ~/Library/LaunchAgents/com.raul.jobs-scrapper.plist
+    launchctl unload ~/Library/LaunchAgents/com.raul.jobs-scraper.plist
 
   To enable email, fill in the EnvironmentVariables block below (use a Gmail
   App Password, not your account password) and reload the agent.
@@ -19,16 +19,16 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.raul.jobs-scrapper</string>
+    <string>com.raul.jobs-scraper</string>
 
     <key>ProgramArguments</key>
     <array>
         <string>/opt/homebrew/bin/python3</string>
-        <string>/Users/rrivero/Desktop/personal-projects/jobs-scrapper/run.py</string>
+        <string>/absolute/path/to/jobs-scraper/run.py</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/Users/rrivero/Desktop/personal-projects/jobs-scrapper</string>
+    <string>/absolute/path/to/jobs-scraper</string>
 
     <key>StartCalendarInterval</key>
     <dict>
@@ -39,9 +39,9 @@
     </dict>
 
     <key>StandardOutPath</key>
-    <string>/Users/rrivero/Desktop/personal-projects/jobs-scrapper/data/run.log</string>
+    <string>/absolute/path/to/jobs-scraper/data/run.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/rrivero/Desktop/personal-projects/jobs-scrapper/data/run.log</string>
+    <string>/absolute/path/to/jobs-scraper/data/run.log</string>
 
     <!--
     <key>EnvironmentVariables</key>

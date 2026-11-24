@@ -24,7 +24,7 @@ import urllib.request
 
 from scraper.filters import work_arrangement
 
-USER_AGENT = "jobs-scrapper/1.0 (+personal job-tracker)"
+USER_AGENT = "jobs-scraper/1.0 (+personal job-tracker)"
 TIMEOUT = 30
 
 
