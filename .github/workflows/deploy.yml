@@ -1,6 +1,6 @@
 name: Update & Deploy Dashboard
 
-# Re-scrapes nightly in the cloud and publishes dashboard.html to GitHub Pages.
+# Re-scrapes nightly in the cloud and publishes the dashboard/ site to GitHub Pages.
 # Pure stdlib, so no dependency install step is needed.
 
 on:
@@ -49,7 +49,7 @@ jobs:
       - name: Assemble Pages site
         run: |
           mkdir -p site
-          cp -r dashboard/* site/
+          cp dashboard/index.html dashboard/app.js dashboard/styles.css dashboard/data.js site/
           touch site/.nojekyll
 
       - name: Upload Pages artifact

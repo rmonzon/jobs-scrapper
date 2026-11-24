@@ -1,6 +1,6 @@
 """Local live dashboard server (stdlib only).
 
-Serves dashboard.html and exposes POST /api/refresh, which re-runs the full
+Serves the dashboard/ directory and exposes POST /api/refresh, which re-runs the full
 fetch → diff → regenerate pipeline so the dashboard's Refresh button pulls
 genuinely fresh data. Intended for localhost use only.
 
@@ -18,7 +18,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
 CONFIG = ROOT / "config.json"
-DASHBOARD = ROOT / "dashboard" / "index.html"
+DASHBOARD_DIR = ROOT / "dashboard"
+DASHBOARD_DATA = DASHBOARD_DIR / "data.js"
+
+_CONTENT_TYPES = {
+    ".html": "text/html; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".js": "application/javascript; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+}
 
 # Serialize refreshes so two button presses can't run the pipeline concurrently
 # and clobber each other's snapshot writes.
@@ -30,11 +38,29 @@ _prefs_lock = threading.Lock()
 _MAX_PREFS_BYTES = 5_000_000
 
 
-def _run_pipeline(filter_override: dict | None = None) -> int:
+def _run_pipeline() -> int:
     # Imported lazily so importing the server never pulls in the whole run stack.
     import run as runner
-    return runner.run(CONFIG, DATA_DIR, seed=False,
-                      filter_override=filter_override)
+    return runner.run(CONFIG, DATA_DIR, seed=False)
+
+
+def _static_file(url_path: str) -> Path | None:
+    """Map a URL path to a file inside DASHBOARD_DIR, or None.
+
+    The dashboard directory is served at the site root, the same layout GitHub
+    Pages gets, so the page's relative asset URLs work in both places. Anything
+    that resolves outside the directory (``/../.env``) is refused.
+    """
+    if url_path in ("/", "/dashboard.html"):  # dashboard.html: old bookmark
+        url_path = "/index.html"
+    base = DASHBOARD_DIR.resolve()
+    try:
+        fp = (base / url_path.lstrip("/")).resolve()
+    except (OSError, ValueError):
+        return None
+    if not fp.is_relative_to(base) or not fp.is_file():
+        return None
+    return fp
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -48,41 +74,19 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = self.path.split("?")[0]
-        if path in ("/", "/index.html"):
-            # Serve the main dashboard index. Prefer the dashboard/index.html
-            # file when present, otherwise fall back to the older single-file
-            # location for compatibility.
-            preferred = ROOT / "dashboard" / "index.html"
-            if preferred.exists():
-                self._send(200, preferred.read_bytes(), "text/html; charset=utf-8")
-                return
-            if not DASHBOARD.exists():
-                self._send(503, b"dashboard not generated yet; run python3 run.py",
-                           "text/plain; charset=utf-8")
-                return
-            self._send(200, DASHBOARD.read_bytes(), "text/html; charset=utf-8")
-            return
-        # Serve static files under /dashboard/* (styles, app.js, data.json).
-        if path.startswith("/dashboard/"):
-            fp = ROOT / path.lstrip("/")
-            if fp.exists() and fp.is_file():
-                if fp.suffix == ".css":
-                    ctype = "text/css; charset=utf-8"
-                elif fp.suffix == ".js":
-                    ctype = "application/javascript; charset=utf-8"
-                elif fp.suffix == ".json":
-                    ctype = "application/json; charset=utf-8"
-                else:
-                    ctype = "application/octet-stream"
-                self._send(200, fp.read_bytes(), ctype)
-                return
-        elif path == "/api/health":
+        if path == "/api/health":
             self._send(200, b'{"ok":true}', "application/json")
         elif path == "/api/prefs":
             from scraper import prefs as prefs_store
             with _prefs_lock:
                 data = prefs_store.load_prefs(DATA_DIR)
             self._send(200, json.dumps(data).encode(), "application/json")
+        elif path in ("/", "/index.html", "/data.js") and not DASHBOARD_DATA.exists():
+            self._send(503, b"dashboard not generated yet; run python3 run.py",
+                       "text/plain; charset=utf-8")
+        elif (fp := _static_file(path)) is not None:
+            ctype = _CONTENT_TYPES.get(fp.suffix, "application/octet-stream")
+            self._send(200, fp.read_bytes(), ctype)
         else:
             self._send(404, b"not found", "text/plain; charset=utf-8")
 
@@ -90,9 +94,6 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path == "/api/prefs":
             self._save_prefs()
-            return
-        if path == "/api/update-filters":
-            self._update_filters()
             return
         if path != "/api/refresh":
             self._send(404, b"not found", "text/plain; charset=utf-8")
@@ -125,29 +126,6 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, json.dumps({"ok": True, **saved}).encode(),
                    "application/json")
 
-    def _update_filters(self):
-        """Apply UI-only filter overrides without mutating the repo config."""
-        length = int(self.headers.get("Content-Length") or 0)
-        if length <= 0 or length > 10_000:
-            self._send(400, b'{"ok":false,"error":"bad payload size"}',
-                       "application/json")
-            return
-        try:
-            body = json.loads(self.rfile.read(length))
-        except ValueError:
-            self._send(400, b'{"ok":false,"error":"invalid json"}',
-                       "application/json")
-            return
-        if not isinstance(body, dict):
-            self._send(400, b'{"ok":false,"error":"invalid filters"}',
-                       "application/json")
-            return
-
-        # Filters are presentation-only. Applying them must not rerun the
-        # scraper, since that would replace the full saved snapshot with only
-        # the matching roles.
-        self._send(200, b'{"ok":true,"background":true}', "application/json")
-
     def _run_and_respond(self):
         try:
             _run_pipeline()
@@ -164,9 +142,9 @@ def serve(host: str = "127.0.0.1", port: int = 8787) -> None:
     from scraper.env import load_env
     load_env(ROOT / ".env")
     # Make sure there's something to serve on first launch.
-    if not DASHBOARD.exists():
+    if not DASHBOARD_DATA.exists():
         from scraper.dashboard import build_dashboard
-        build_dashboard(DATA_DIR, DASHBOARD, CONFIG)
+        build_dashboard(DATA_DIR, DASHBOARD_DIR, CONFIG)
 
     httpd = ThreadingHTTPServer((host, port), Handler)
     url = f"http://{host}:{port}"

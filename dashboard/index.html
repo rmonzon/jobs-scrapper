@@ -1,80 +1,75 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Job Tracker</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300..700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/dashboard/styles.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300..700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!-- Relative URLs: the page works from the local server, GitHub Pages, and file://. -->
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <div class="page">
-  <!-- Top nav -->
   <div class="nav">
-    <div class="brand">JobTracker</div>
-    <div class="live"><div class="d"></div><span>Live</span></div>
-    <div class="upd"><span id="upd">Updated —</span><span class="upd-status" id="updStatus" hidden></span></div>
-    <button class="refresh" id="refresh" title="Re-fetch and update"><span id="refreshLabel">⟳ Refresh</span></button>
+    <span class="brand">JobTracker</span>
+    <span class="live"><span class="d"></span><span>Live</span></span>
+    <span class="upd" id="upd"></span>
+    <span class="upd-status" id="updStatus" hidden></span>
+    <button class="refresh" id="refresh"><span class="ic">↻</span><span id="refreshLabel">Refresh</span></button>
   </div>
 
-  <!-- System-level filters (editable, from config.json) -->
-  <div id="systemFilters" class="system-filters">
+  <div class="system-filters" id="systemFilters">
     <div class="system-filters-title">System Filters</div>
     <div class="system-filters-content">
       <div class="filter-keywords">
-        <span class="keywords-label">Keywords</span>
-        <div id="keywordTags" class="keyword-tags inline-keyword-tags" aria-live="polite">
+        <span class="keywords-label" title="Narrows the roles the scraper kept. Saved in this browser only; config.json is unchanged.">Keywords</span>
+        <div id="keywordTags" class="keyword-tags inline-keyword-tags">
           <input id="keywordInput" class="keyword-input" type="text" placeholder="Add keyword" aria-label="Add keyword">
         </div>
+        <button class="edit-keywords-btn" id="keywordReset" type="button" title="Go back to the keywords in config.json" hidden>Reset</button>
       </div>
     </div>
   </div>
 
-  <!-- Page header -->
   <div class="head">
     <h1>Daily Job Postings</h1>
     <p>Tracking new openings across the companies you follow</p>
   </div>
 
-  <!-- Banner with message -->
   <div class="banner" id="banner">
-    <div class="d"></div>
-    <span class="txt" id="bannerTxt">Loading…</span>
+    <span class="d"></span>
+    <span class="txt" id="bannerTxt"></span>
     <span class="ct" id="bannerCt"></span>
   </div>
 
-  <!-- Stats cards -->
-  <div class="stats">
-    <div class="stat">
-      <div class="l">NEW TODAY</div>
-      <div class="n" id="stNew">—</div>
-    </div>
-    <div class="stat">
-      <div class="l">TOTAL ACTIVE</div>
-      <div class="n" id="stTotal">—</div>
-    </div>
-    <div class="stat">
-      <div class="l">COMPANIES</div>
-      <div class="n" id="stCos">—</div>
-    </div>
-    <div class="stat">
-      <div class="l">REMOTE ROLES</div>
-      <div class="n" id="stRemote">—</div>
-    </div>
+  <div class="tracked" id="tracked" style="display:none">
+    <button class="tracked-head" id="trackedHead" type="button" aria-expanded="false" aria-controls="trackedRows">
+      <span class="tracked-title">★ Following</span>
+      <span class="tracked-ct" id="trackedCt"></span>
+      <svg class="tracked-caret" id="trackedCaret" width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg>
+    </button>
+    <div id="trackedRows" style="display:none"></div>
   </div>
 
-  <!-- Panel with filters and jobs -->
+  <div class="stats">
+    <div class="stat"><p class="l">New Today</p><p class="n blue mono" id="stNew">0</p></div>
+    <div class="stat"><p class="l">Total Active</p><p class="n mono" id="stTotal">0</p></div>
+    <div class="stat"><p class="l">Companies</p><p class="n mono" id="stCos">0</p></div>
+    <div class="stat"><p class="l">Remote Roles</p><p class="n mono" id="stRemote">0</p></div>
+  </div>
+
   <div class="panel">
-    <!-- Filter bar -->
     <div class="filterbar">
       <div class="search">
-        <input type="text" id="search" placeholder="Search roles, companies, locations…">
+        <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round"><circle cx="9" cy="9" r="6"></circle><line x1="15" y1="15" x2="19" y2="19"></line></svg>
+        <input id="search" type="text" placeholder="Search roles, companies, locations…">
       </div>
       <div class="selwrap">
         <select id="company"></select>
-        <span class="caret">▼</span>
+        <svg class="caret" width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 4l4 4 4-4" stroke="oklch(0.55 0.04 260)" stroke-width="1.5" stroke-linecap="round"></path></svg>
       </div>
       <div class="selwrap">
         <select id="loc">
@@ -83,42 +78,30 @@
           <option value="hybrid">Hybrid</option>
           <option value="other">Other</option>
         </select>
-        <span class="caret">▼</span>
+        <svg class="caret" width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 4l4 4 4-4" stroke="oklch(0.55 0.04 260)" stroke-width="1.5" stroke-linecap="round"></path></svg>
       </div>
-      <button class="hideToggle" id="hideToggle" style="display:none;"></button>
+      <button class="hidebtn" id="hideToggle" type="button" style="display:none"></button>
     </div>
 
-    <!-- System-level filters (from config.json) -->
-    <div id="systemFilters" style="padding:12px 20px;border-bottom:1px solid var(--line);background:var(--input);font-size:12px;color:var(--muted)"></div>
-
-    <!-- Tracked/Following section -->
-    <div id="tracked" style="display:none">
-      <div class="thead">
-        <span class="h">Following</span>
-        <span class="ct" id="trackedCt"></span>
-      </div>
-      <div class="rows" id="trackedRows"></div>
+    <div class="thead">
+      <div class="c-logo"></div>
+      <div class="h c-role">Role</div>
+      <div class="h c-status">Status</div>
+      <div class="h c-type">Work Type</div>
+      <div class="h c-loc">Location</div>
+      <div class="h c-upd">Updated</div>
+      <div class="c-view"></div>
+      <div class="c-act"></div>
     </div>
 
-    <!-- Jobs table header -->
-    <div class="thead" aria-label="Jobs table header">
-      <span class="h c-logo" aria-hidden="true"></span>
-      <span class="h c-role">ROLE</span>
-      <span class="h c-status">STATUS</span>
-      <span class="h c-type">WORK TYPE</span>
-      <span class="h c-loc">LOCATION</span>
-      <span class="h c-upd">UPDATED</span>
-      <span class="h c-view" aria-hidden="true"></span>
-      <span class="h c-act" aria-hidden="true"></span>
-    </div>
-
-    <!-- Jobs list -->
     <div id="rows"></div>
-    <div class="empty" id="empty" style="display:none;padding:40px;text-align:center;color:var(--muted)">No jobs match your filters.</div>
+    <div class="empty" id="empty" style="display:none">No jobs match your current filters.</div>
   </div>
 </div>
 
-<script>/* data loaded from data.json */</script>
-<script src="/dashboard/app.js" defer></script>
+<script type="application/json" id="data">__PAYLOAD__</script>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

@@ -1,10 +1,10 @@
 """Filter fetched roles down to the ones worth tracking.
 
-Two independent filters, both driven by config.json's ``filters`` block:
+Three independent filters, all driven by config.json's ``filters`` block:
 
-    * us_only   — keep only roles located in the United States
-    * work_arrangement — keep roles matching any, remote, hybrid, or onsite
-  * keywords  — keep only roles whose title matches one of the keywords
+  * us_only          — keep only roles located in the United States
+  * work_arrangement — "any" (default), "remote", "hybrid" or "onsite"
+  * keywords         — keep only roles whose title matches one of the keywords
 
 Location strings are wildly inconsistent across ATSes ("USA - Remote",
 "Los Gatos,California,United States of America", "San Francisco, CA",
@@ -19,6 +19,7 @@ case is to reject "CA" when Canadian markers are present in the same string.
 
 from __future__ import annotations
 
+import html
 import re
 
 US_STATE_NAMES = {
@@ -98,22 +99,100 @@ def _compile_keywords(keywords: list[str]) -> re.Pattern | None:
     return re.compile(r"\b(?:" + alts + r")\b", re.I)
 
 
-def work_arrangement(location: str, description: str = "") -> str:
-    """Classify from keywords anywhere in the location or description."""
-    value = f"{location or ''} {description or ''}".lower()
-    # A specific recurring office schedule means the role is hybrid, even if
-    # the description does not include Ashby's separate "Location Type" field.
-    days_per_week = r"(?:[1-5]|one|two|three|four|five)\s+days?\s+(?:(?:a|per)\s+week|/week)"
-    office = r"(?:in[- ]office|on[- ]?site|at (?:the )?office)"
-    if (re.search(rf"\b{office}\b.{{0,40}}\b{days_per_week}\b", value)
-            or re.search(rf"\b{days_per_week}\b.{{0,40}}\b{office}\b", value)):
+# ---- Work arrangement (remote / hybrid / on-site) ----------------------------
+#
+# Order of trust: a structured provider field (Ashby/Lever ``workplaceType``,
+# Eightfold ``work_location_option``), then the location string, then specific
+# phrases in the description. Descriptions are full of incidental mentions
+# ("collaborate with remote teams", "hybrid cloud"), so only phrases that state
+# the role's own arrangement count; anything else stays "unknown".
+
+_TAG = re.compile(r"<[^>]+>")
+_WS = re.compile(r"\s+")
+
+_LOC_HYBRID = re.compile(r"\bhybrid\b", re.I)
+_LOC_REMOTE = re.compile(r"\bremote\b", re.I)
+_LOC_ONSITE = re.compile(r"\b(?:on[- ]?site|in[- ]office|office[- ]based)\b", re.I)
+
+_NUM = r"(?:[1-5]|one|two|three|four|five)"
+_DAYS = (rf"{_NUM}(?:\s*(?:-|to|or)\s*{_NUM})?\s+days?\s+"
+         r"(?:(?:a|per|each|every)\s+week|/\s?week)")
+_OFFICE = (r"(?:in[- ]office|on[- ]?site|in[- ]person"
+           r"|(?:in|at|from) (?:the|our|an?) (?:\w+ )?office)")
+
+_NOT_REMOTE = re.compile(
+    r"\b(?:(?:is|are|be) not (?:a )?(?:fully )?remote"
+    r"|not (?:eligible|open) (?:for|to) remote|no remote"
+    r"|remote (?:work )?is not (?:available|an option|possible|supported))\b")
+_HYBRID = [
+    re.compile(rf"\b{_OFFICE}\b.{{0,40}}\b{_DAYS}"),
+    re.compile(rf"\b{_DAYS}\b.{{0,40}}\b{_OFFICE}"),
+    re.compile(r"\bhybrid (?:role|position|work|working|schedule|model|arrangement"
+               r"|environment|policy|basis|setup)\b"),
+    re.compile(r"\b(?:role|position|job) (?:is|will be) hybrid\b"),
+    re.compile(r"\(hybrid\b"),
+]
+_REMOTE = [
+    re.compile(r"\bremote[- ]eligible\b"),
+    re.compile(r"\b(?:fully|100%|completely|entirely) remote\b"
+               r"(?! (?:teams?|company|organization|workforce|work environments?))"),
+    re.compile(r"\bremote[- ](?:first|friendly)\b"),
+    re.compile(r"\b(?:role|position|job|opportunity) (?:is|can be|may be|will be|could be)"
+               r" (?:fully |based )?remote(?:ly)?\b"),
+    re.compile(r"\b(?:open to|welcome|considering) (?:fully )?remote"
+               r" (?:candidates|applicants|locations|work)\b"),
+    re.compile(r"\bremote (?:role|position|opportunity|option)\b"),
+    re.compile(r"\bor remote(?:ly)?\s*[.,;)]"),
+    re.compile(r"\bremote (?:in|within|from) (?:the )?(?:us|u\.s\.|united states|usa)\b"),
+]
+_ONSITE = [
+    re.compile(r"\b(?:role|position|job) (?:is|will be) (?:an? )?(?:fully |100% )?"
+               r"(?:on[- ]?site|in[- ]office|in[- ]person|office[- ]based)\b"),
+    re.compile(r"\b(?:fully|100%) (?:on[- ]?site|in[- ]office|in[- ]person)\b"),
+    re.compile(r"\b(?:five|5) days (?:a|per) week (?:in|at) (?:the|our) office\b"),
+    re.compile(r"\b(?:on[- ]?site|in[- ]office|office[- ]based) (?:role|position)\b"),
+]
+
+
+def _plain(text: str) -> str:
+    # Greenhouse double-escapes its HTML (&lt;p&gt;, &amp;nbsp;): unescape twice.
+    t = html.unescape(html.unescape(text or ""))
+    return _WS.sub(" ", _TAG.sub(" ", t)).lower()
+
+
+def _from_provider(value: str) -> str | None:
+    v = re.sub(r"[\s_-]", "", (value or "").lower())
+    if "hybrid" in v:
         return "hybrid"
-    if re.search(r"\bremote\b", value):
+    if "remote" in v:          # "Remote", "remote_local", ...
         return "remote"
-    if re.search(r"\bhybrid\b", value):
-        return "hybrid"
-    if re.search(r"\b(?:on[- ]?site|in[- ]office|office[- ]based)\b", value):
+    if v in ("onsite", "office", "inoffice", "inperson"):
         return "onsite"
+    return None                # "", "unspecified", unknown values
+
+
+def work_arrangement(location: str, description: str = "",
+                     provider_value: str = "") -> str:
+    """Classify a role as "remote", "hybrid", "onsite" or "unknown"."""
+    known = _from_provider(provider_value)
+    if known:
+        return known
+    loc = location or ""
+    if _LOC_HYBRID.search(loc):
+        return "hybrid"
+    if _LOC_REMOTE.search(loc):
+        return "remote"
+    if _LOC_ONSITE.search(loc):
+        return "onsite"
+    text = _plain(description)
+    if not text:
+        return "unknown"
+    if _NOT_REMOTE.search(text):
+        return "hybrid" if any(p.search(text) for p in _HYBRID) else "onsite"
+    for kind, patterns in (("hybrid", _HYBRID), ("remote", _REMOTE),
+                           ("onsite", _ONSITE)):
+        if any(p.search(text) for p in patterns):
+            return kind
     return "unknown"
 
 
@@ -124,6 +203,7 @@ def make_filter(filters: dict | None):
     """
     filters = filters or {}
     us_only = filters.get("us_only", False)
+    include_remote = filters.get("include_unspecified_remote", False)
     arrangement = filters.get("work_arrangement", "any")
     if arrangement not in {"any", "remote", "hybrid", "onsite"}:
         arrangement = "any"
@@ -133,13 +213,18 @@ def make_filter(filters: dict | None):
         if kw is not None and not kw.search(job.get("title", "")):
             return False
         loc = job.get("location", "")
-        if arrangement != "any" and work_arrangement(loc, job.get("description", "")) != arrangement:
-            return False
+        if arrangement != "any":
+            kind = job.get("work_type") or work_arrangement(loc)
+            if kind != arrangement:
+                return False
         if us_only:
             # Office/region tags (Greenhouse) are the most reliable US signal and
             # resolve cases the free-text location can't, like "N/A".
             if any(is_us(o) for o in job.get("offices", [])):
                 return True
+            bare_remote = loc.strip().lower() in ("remote", "", "n/a")
+            if bare_remote:
+                return include_remote
             if not is_us(loc):
                 return False
         return True

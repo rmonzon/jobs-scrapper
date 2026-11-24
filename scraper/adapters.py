@@ -7,6 +7,8 @@ list of normalized job dicts:
         "location":   str,
         "url":        str,   # link a human can open and apply
         "updated_at": str,   # ISO-ish timestamp or "" if the provider omits it
+        "work_type":  str,   # "remote" | "hybrid" | "onsite" | "unknown"
+        "offices":    list,  # provider office/region tags (may be empty)
     }
 
 Adapters use only the standard library so the scraper runs under cron with no
@@ -19,6 +21,8 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
+
+from scraper.filters import work_arrangement
 
 USER_AGENT = "jobs-scrapper/1.0 (+personal job-tracker)"
 TIMEOUT = 30
@@ -37,15 +41,18 @@ def _get_json(url: str):
         raise FetchError(f"{url}: {exc}") from exc
 
 
-def _norm(job_id, title, location, url, updated_at, offices=None,
-          description="") -> dict:
+def _norm(job_id, title, location, url, updated_at, offices=None, *,
+          workplace="", description="") -> dict:
+    location = (location or "").strip()
     return {
         "id": str(job_id),
         "title": (title or "").strip(),
-        "location": (location or "").strip(),
+        "location": location,
         "url": url or "",
         "updated_at": updated_at or "",
-        "description": description or "",
+        # Classified here, while the description is in hand, so snapshots store
+        # just the label instead of every posting's full HTML body.
+        "work_type": work_arrangement(location, description, workplace),
         # Provider-supplied office/region groupings (e.g. Greenhouse's "US",
         # "Ireland Locations"). More reliable than the free-text location for
         # country filtering. Empty for providers that don't expose it.
@@ -66,8 +73,8 @@ def greenhouse(cfg: dict) -> list[dict]:
         loc = (j.get("location") or {}).get("name", "")
         offices = [o.get("name", "") for o in j.get("offices", [])]
         out.append(_norm(j.get("id"), j.get("title"), loc,
-                 j.get("absolute_url"), j.get("updated_at"), offices,
-                 j.get("content", "")))
+                         j.get("absolute_url"), j.get("updated_at"), offices,
+                         description=j.get("content", "")))
     return out
 
 
@@ -81,8 +88,9 @@ def lever(cfg: dict) -> list[dict]:
         cats = j.get("categories") or {}
         # Lever createdAt is epoch millis; keep as string for stable diffing.
         out.append(_norm(j.get("id"), j.get("text"), cats.get("location"),
-                 j.get("hostedUrl"), str(j.get("createdAt", "")),
-                 description=j.get("descriptionPlain", "") or j.get("description", "")))
+                         j.get("hostedUrl"), str(j.get("createdAt", "")),
+                         workplace=j.get("workplaceType", ""),
+                         description=j.get("descriptionPlain", "")))
     return out
 
 
@@ -105,7 +113,7 @@ def eightfold(cfg: dict) -> list[dict]:
             url = p.get("canonicalPositionUrl") or p.get("positionUrl") or ""
             out.append(_norm(p.get("id"), p.get("name"), p.get("location"),
                              url, str(p.get("t_create", "")),
-                             description=p.get("description", "")))
+                             workplace=p.get("work_location_option", "")))
         start += len(positions)
         if start >= data.get("count", 0):
             break
@@ -124,8 +132,9 @@ def ashby(cfg: dict) -> list[dict]:
         # country filtering, same role Greenhouse's `offices` plays.
         offices = [v for v in (addr.get("addressCountry"), addr.get("addressRegion")) if v]
         out.append(_norm(j.get("id"), j.get("title"), j.get("location"),
-                 j.get("jobUrl"), j.get("publishedAt"), offices,
-                 j.get("descriptionHtml", "") or j.get("description", "")))
+                         j.get("jobUrl"), j.get("publishedAt"), offices,
+                         workplace=j.get("workplaceType", ""),
+                         description=j.get("descriptionPlain", "")))
     return out
 
 

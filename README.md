@@ -46,9 +46,11 @@ A failed company never aborts the others — its error is recorded in the digest
 
 ## Live dashboard server (optional)
 
-By default `index.html` is a static file: data is baked in when `run.py`
-generates it, and its Refresh button only reloads the file. To make Refresh
-actually re-fetch live, run the local server instead:
+The dashboard is a static page in `dashboard/` (`index.html`, `app.js`,
+`styles.css`); each run writes the data next to it as `dashboard/data.js`. You
+can open `dashboard/index.html` directly, and GitHub Pages serves the same
+files. On a static copy the Refresh button only reloads the page. To make
+Refresh actually re-fetch live, run the local server instead:
 
 ```bash
 python3 serve.py            # http://127.0.0.1:8787
@@ -57,6 +59,12 @@ python3 serve.py            # http://127.0.0.1:8787
 Open that URL (not the file). The Refresh button now POSTs to `/api/refresh`,
 which re-runs the full fetch → diff → regenerate pipeline and reloads with fresh
 data. Localhost only; stdlib-only, no dependencies.
+
+The **Keywords** pills and the **Remote / Hybrid / Other** dropdown filter the
+page in your browser only (saved in localStorage; `config.json` is never
+changed). Keywords can only narrow the list: the scraper keeps just the roles
+whose titles match `config.json`'s `filters.keywords`, so to track a new kind of
+role, add its keyword there. **Reset** goes back to the config list.
 
 ## Adding a company
 

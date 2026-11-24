@@ -1,194 +1,14 @@
-(async function(){
-const FETCHED = await fetch('/dashboard/data.json').then(r=>r.json()).catch(()=>null);
-const DATA = FETCHED || window.__JT_DATA || {};
+// data.js (written by every run) sets window.__JT_DATA. It's a plain script
+// rather than fetched JSON so the page also works when opened via file://.
+const DATA = window.__JT_DATA || {
+  missing: true, companies: [], jobs: [], filters: {}, prefs: {},
+  new_count: 0, total_jobs: 0, remote_count: 0, update_ok: false,
+  update_errors: ["dashboard/data.js not found: run python3 run.py"],
+};
 const $ = (id) => document.getElementById(id);
 const TOKEN = DATA.logo_token;
 const COLORS = ["#6f9bff","#8b6fff","#ff6f91","#ffa14a","#34d399","#22b8cf","#e879f9"];
 const esc = (s) => (s||"").replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
-
-function readSessionKeywords() {
-  try {
-    const v = JSON.parse(localStorage.getItem('jt_keywords') || 'null');
-    return Array.isArray(v) ? v : [];
-  } catch {
-    return [];
-  }
-}
-
-function getEffectiveKeywords() {
-  // config.json is the default source for keywords; a saved local override
-  // takes precedence for this browser session and never writes back to config.
-  const session = readSessionKeywords();
-  if (session.length) return session;
-  return (DATA.filters && Array.isArray(DATA.filters.keywords)) ? DATA.filters.keywords : [];
-}
-
-function saveSessionKeywords(keywords) {
-  const next = Array.isArray(keywords) ? keywords : [];
-  try {
-    localStorage.setItem('jt_keywords', JSON.stringify(next));
-  } catch (e) {
-    console.error('Failed to save keywords to localStorage', e);
-  }
-  DATA.filters = DATA.filters || {};
-  DATA.filters.keywords = next;
-  return next;
-}
-
-function readSessionFilters() {
-  try {
-    const value = JSON.parse(localStorage.getItem('jt_filters') || 'null');
-    return value && typeof value === 'object' ? value : {};
-  } catch {
-    return {};
-  }
-}
-
-function getEffectiveFilters() {
-  return { ...(DATA.filters || {}), ...readSessionFilters() };
-}
-
-function saveSessionFilters(filters) {
-  const next = {
-    work_arrangement: ["any", "remote", "hybrid", "other"].includes(filters.work_arrangement)
-      ? filters.work_arrangement : "any",
-  };
-  try {
-    localStorage.setItem('jt_filters', JSON.stringify(next));
-  } catch (e) {
-    console.error('Failed to save filters to localStorage', e);
-  }
-  DATA.filters = { ...(DATA.filters || {}), ...next };
-  return next;
-}
-
-// Show system-level filters, including browser-local overrides.
-function renderSystemFilters() {
-  const saved = readSessionFilters().work_arrangement;
-  $("loc").value = ["remote", "hybrid", "other"].includes(saved) ? saved : "";
-}
-renderSystemFilters();
-
-const keywordTagsEl = $("keywordTags");
-const keywordInputEl = $("keywordInput");
-
-function uniqueKeywords(list) {
-  const seen = new Set();
-  const out = [];
-  for (const item of list || []) {
-    const value = String(item || "").trim();
-    if (!value) continue;
-    const key = value.toLowerCase();
-    if (!seen.has(key)) {
-      seen.add(key);
-      out.push(value);
-    }
-  }
-  return out;
-}
-
-function getCurrentKeywordTags() {
-  return Array.from(keywordTagsEl.querySelectorAll(".keyword-tag")).map((el) => el.dataset.tag || "").filter(Boolean);
-}
-
-async function saveKeywords() {
-  const nextKeywords = saveSessionKeywords(getCurrentKeywordTags());
-  DATA.filters = DATA.filters || {};
-  DATA.filters.keywords = nextKeywords;
-  render();
-}
-
-function renderKeywordTags(list) {
-  const tags = uniqueKeywords(list);
-  keywordTagsEl.innerHTML = "";
-  for (const tag of tags) {
-    const el = document.createElement("span");
-    el.className = "keyword-tag";
-    el.dataset.tag = tag;
-
-    const label = document.createElement("span");
-    label.textContent = tag;
-
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.className = "keyword-tag-remove";
-    remove.textContent = "×";
-    remove.title = `Remove ${tag}`;
-    remove.setAttribute("aria-label", `Remove ${tag}`);
-    remove.addEventListener("click", () => {
-      const next = getCurrentKeywordTags().filter((value) => value.toLowerCase() !== tag.toLowerCase());
-      renderKeywordTags(next);
-      saveKeywords();
-    });
-
-    el.append(label, remove);
-    keywordTagsEl.appendChild(el);
-  }
-  keywordTagsEl.appendChild(keywordInputEl);
-  keywordInputEl.value = "";
-}
-
-function addKeywordTag(raw) {
-  const additions = String(raw || "")
-    .split(/[\n,]+/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (!additions.length) return;
-
-  const existing = getCurrentKeywordTags();
-  const next = uniqueKeywords([...existing, ...additions]);
-  renderKeywordTags(next);
-  saveKeywords();
-}
-
-function removeLastKeywordTag() {
-  const current = getCurrentKeywordTags();
-  if (!current.length) return;
-  renderKeywordTags(current.slice(0, -1));
-  saveKeywords();
-}
-
-renderKeywordTags(getEffectiveKeywords());
-
-function currentFilterPayload() {
-  return {
-    work_arrangement: $("loc").value || "any",
-    keywords: getEffectiveKeywords(),
-  };
-}
-
-keywordInputEl.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" || e.key === "," || e.key === ";") {
-    e.preventDefault();
-    addKeywordTag(keywordInputEl.value);
-    keywordInputEl.value = "";
-    requestAnimationFrame(() => keywordInputEl.focus());
-    return;
-  }
-  if (e.key === "Backspace" && keywordInputEl.value === "") {
-    e.preventDefault();
-    removeLastKeywordTag();
-    requestAnimationFrame(() => keywordInputEl.focus());
-  }
-});
-
-keywordInputEl.addEventListener("blur", () => {
-  if (keywordInputEl.value.trim()) {
-    addKeywordTag(keywordInputEl.value);
-    keywordInputEl.value = "";
-    requestAnimationFrame(() => keywordInputEl.focus());
-  }
-});
-
-// Handle filter changes
-function updateFilters() {
-  saveSessionFilters({
-    work_arrangement: $("loc").value || "any",
-  });
-  render();
-}
-
-$("loc").addEventListener("change", updateFilters);
 
 // Header / stats
 // generated_at is an ISO-8601 UTC instant; format it in the viewer's own
@@ -224,7 +44,10 @@ $("stRemote").textContent = DATA.remote_count;
 
 // Banner
 const banner = $("banner");
-if (DATA.new_count > 0) {
+if (DATA.missing) {
+  banner.classList.add("none");
+  $("bannerTxt").textContent = "No dashboard data yet: run python3 run.py";
+} else if (DATA.new_count > 0) {
   banner.classList.add("has");
   $("bannerTxt").textContent = DATA.new_count + (DATA.new_count === 1 ? " new role" : " new roles") + " discovered in today's run";
 } else {
@@ -273,6 +96,11 @@ function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch
 let tracked = (DATA.prefs && DATA.prefs.tracked) || {};
 let hidden = new Set((DATA.prefs && DATA.prefs.hidden) || []);
 let showHidden = false;
+
+// Following panel starts collapsed to a one-line summary; the "no longer
+// available" roles within it stay collapsed even when the panel is expanded.
+let trackedExpanded = false;
+let goneExpanded = false;
 
 // Jobs present in the current run, by id → used to detect tracked roles that
 // have since vanished, and to refresh stored snapshots with the latest data.
@@ -334,6 +162,11 @@ document.addEventListener("click", (e) => {
   if (btn.dataset.act === "track") toggleTrack(id);
   else if (btn.dataset.act === "hide") toggleHide(id);
 });
+// Following-panel collapse/expand and the "no longer available" sub-toggle.
+document.addEventListener("click", (e) => {
+  if (e.target.closest("#trackedHead")) { trackedExpanded = !trackedExpanded; renderTracked(); return; }
+  if (e.target.closest("#goneToggle")) { goneExpanded = !goneExpanded; renderTracked(); }
+});
 
 function actionsHtml(j, ctx) {
   const isTracked = !!tracked[j.id];
@@ -344,31 +177,36 @@ function actionsHtml(j, ctx) {
   return `<div class="acts">${star}${drop}</div>`;
 }
 
-function workLocationType(location) {
-  const value = (location || "").toLowerCase();
-  if (/\bremote\b/.test(value)) return "remote";
-  if (/\bhybrid\b/.test(value)) return "hybrid";
-  if (/\b(?:on[- ]?site|in[- ]office|office[- ]based)\b/.test(value)) return "onsite";
+// Fallback for rows saved before work_type existed (e.g. old Following
+// snapshots); the scraper classifies everything it fetches now.
+function workTypeOf(j) {
+  if (j.work_type) return j.work_type;
+  const v = (j.location || "").toLowerCase();
+  if (/\bhybrid\b/.test(v)) return "hybrid";
+  if (/\bremote\b/.test(v)) return "remote";
+  if (/\b(?:on[- ]?site|in[- ]office|office[- ]based)\b/.test(v)) return "onsite";
   return "unknown";
 }
+const WORK_TYPE_LABEL = { remote: "Remote", hybrid: "Hybrid", onsite: "On-site", unknown: "Unknown" };
 
+// The Work Type column already says remote/hybrid/on-site, so drop those words
+// from the location pill ("USA - Remote" -> "USA").
 function locationForDisplay(location) {
   return (location || "")
     .replace(/\b(?:remote|hybrid|on[- ]?site|in[- ]office|office[- ]based)\b/gi, "")
     .replace(/\s*[-|/]\s*/g, " ")
-    .replace(/\s{2,}/g, " ")
-    .trim();
+    .replace(/^[\s,;]+|[\s,;]+$/g, "")
+    .replace(/\s{2,}/g, " ");
 }
 
 function rowHtml(j, ctx) {
   const gone = ctx === "tracked" && !byId.has(j.id);
   const badge = gone ? `<div class="badge gone">GONE</div>`
     : (j.isNew ? `<div class="badge">NEW</div>` : "");
-  const type = j.work_type || workLocationType(j.location);
-  const typeLabel = { remote: "Remote", hybrid: "Hybrid", onsite: "On-site", unknown: "Unknown" }[type];
-  const typeChip = `<div class="chip ${type}">${typeLabel}</div>`;
-  const displayLocation = locationForDisplay(j.location);
-  const loc = displayLocation ? `<div class="chip location-chip" title="${esc(j.location)}">${esc(displayLocation)}</div>` : "—";
+  const type = workTypeOf(j);
+  const typeChip = `<div class="chip ${type}">${WORK_TYPE_LABEL[type] || "Unknown"}</div>`;
+  const shown = locationForDisplay(j.location);
+  const loc = shown ? `<div class="chip location-chip" title="${esc(j.location)}">${esc(shown)}</div>` : "";
   const view = j.url ? `<a class="view" href="${esc(j.url)}" target="_blank" rel="noopener">View →</a>` : `<span class="c-view"></span>`;
   const cls = "row" + (gone ? " gone" : (j.isNew ? " new" : ""))
     + (ctx === "main" && hidden.has(j.id) ? " hiddenrow" : "");
@@ -393,11 +231,25 @@ function renderTracked() {
   items.sort((a, b) => (byId.has(b.id) ? 0 : 1) - (byId.has(a.id) ? 0 : 1)
     || (Number(b.isNew) - Number(a.isNew))
     || a.company.localeCompare(b.company));
-  const goneCount = items.filter(j => !byId.has(j.id)).length;
+  const liveItems = items.filter(j => byId.has(j.id));
+  const goneItems = items.filter(j => !byId.has(j.id));
   panel.style.display = "block";
   $("trackedCt").textContent = items.length + (items.length === 1 ? " role" : " roles")
-    + (goneCount ? ` · ${goneCount} no longer available` : "");
-  $("trackedRows").innerHTML = items.map(j => rowHtml(j, "tracked")).join("");
+    + (goneItems.length ? ` · ${goneItems.length} no longer available` : "");
+
+  $("trackedHead").setAttribute("aria-expanded", String(trackedExpanded));
+  $("trackedCaret").classList.toggle("open", trackedExpanded);
+  const rowsEl = $("trackedRows");
+  rowsEl.style.display = trackedExpanded ? "block" : "none";
+  if (!trackedExpanded) return;   // collapsed: skip rebuilding the (hidden) row HTML
+
+  const goneHtml = goneItems.length
+    ? `<button class="gone-toggle" id="goneToggle" type="button" aria-expanded="${goneExpanded}" aria-controls="trackedRows">
+        <span>${goneItems.length} no longer available</span>
+        <svg class="car${goneExpanded ? " open" : ""}" width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg>
+      </button>${goneExpanded ? goneItems.map(j => rowHtml(j, "tracked")).join("") : ""}`
+    : "";
+  rowsEl.innerHTML = liveItems.map(j => rowHtml(j, "tracked")).join("") + goneHtml;
 }
 
 function render() {
@@ -405,35 +257,28 @@ function render() {
   const q = $("search").value.trim().toLowerCase();
   const co = sel.value;
   const lf = $("loc").value;
+  const kwRe = keywordRegex(getEffectiveKeywords());
   const rows = DATA.jobs.filter(j => {
     if (tracked[j.id]) return false;                 // shown in the Following panel
     if (!showHidden && hidden.has(j.id)) return false;
     if (showHidden && !hidden.has(j.id)) return false;
     if (co && j.company !== co) return false;
-    const type = j.work_type || workLocationType(j.location);
-    if (lf === "other" && (type === "remote" || type === "hybrid")) return false;
-    if (lf && lf !== "other" && type !== lf) return false;
+    if (lf) {
+      const type = workTypeOf(j);
+      if (lf === "other" ? (type === "remote" || type === "hybrid") : type !== lf) return false;
+    }
+    if (kwRe && !kwRe.test(j.title)) return false;
     if (q && !(j.title + " " + j.company + " " + j.location).toLowerCase().includes(q)) return false;
     return true;
   });
-  // If the user saved session keywords, apply them as an additional
-  // client-side filter so the displayed jobs reflect the user's edits
-  // even though the repo-level pipeline may not yet have re-run.
-  const activeKw = getEffectiveKeywords();
-  const filtered = (activeKw.length)
-    ? rows.filter(j => {
-        const hay = (j.title + ' ' + (j.company||'') + ' ' + (j.location||'')).toLowerCase();
-        return activeKw.some(k => hay.includes((k||'').toLowerCase()));
-      })
-    : rows;
-  $("bannerCt").textContent = filtered.length + " of " + DATA.total_jobs + " jobs";
-  $("rows").innerHTML = filtered.map(j => rowHtml(j, "main")).join("");
+  $("bannerCt").textContent = rows.length + " of " + DATA.total_jobs + " jobs";
+  $("rows").innerHTML = rows.map(j => rowHtml(j, "main")).join("");
   const emptyEl = $("empty");
-  emptyEl.style.display = filtered.length ? "none" : "block";
+  emptyEl.style.display = rows.length ? "none" : "block";
   emptyEl.textContent = showHidden
     ? "Nothing hidden yet — use ✕ on a role to mark it as not interested."
-    : (sessKw.length
-      ? "No jobs match your saved keywords. Clear them or edit the keyword list to restore the full feed."
+    : (keywordOverride() !== null
+      ? "No jobs match your keywords. Edit them or use Reset to restore the config.json list."
       : "No jobs match your current filters.");
 
   // "Show hidden" toggle reflects the current count.
@@ -451,7 +296,114 @@ const renderAll = render;
 $("hideToggle").addEventListener("click", () => { showHidden = !showHidden; render(); });
 $("search").addEventListener("input", render);
 sel.addEventListener("change", render);
-$("loc").addEventListener("change", render);
+$("loc").addEventListener("change", () => {
+  lsSet(LS_FILTERS, { work_arrangement: $("loc").value || "any" });
+  render();
+});
+
+// ---- Keyword + work-location filters (browser-local) ------------------------
+// The scraper only keeps roles whose title matches config.json's keywords, so
+// these narrow what it fetched: removing a keyword hides its roles, and a new
+// keyword only matches roles that also matched a config keyword. Edits live in
+// this browser's localStorage and never touch config.json.
+const LS_KEYWORDS = "jt_keywords";  // [ keyword, ... ]; absent = use config.json
+const LS_FILTERS  = "jt_filters";   // { work_arrangement: "any"|"remote"|"hybrid"|"other" }
+const configKeywords = () => uniqueKeywords((DATA.filters && DATA.filters.keywords) || []);
+
+// null when there's no valid override (so config.json applies); [] is a real
+// "no keywords" choice that shows every fetched role.
+function keywordOverride() {
+  const v = lsGet(LS_KEYWORDS, null);
+  return Array.isArray(v) ? uniqueKeywords(v) : null;
+}
+function getEffectiveKeywords() { return keywordOverride() ?? configKeywords(); }
+
+function uniqueKeywords(list) {
+  const seen = new Set(), out = [];
+  for (const item of list) {
+    const v = String(item ?? "").trim();
+    if (v && !seen.has(v.toLowerCase())) { seen.add(v.toLowerCase()); out.push(v); }
+  }
+  return out;
+}
+
+// Same semantics as the scraper's filter (scraper/filters.py): whole words,
+// case-insensitive, matched against the title only, so "ui" never hits "Build".
+function keywordRegex(keywords) {
+  if (!keywords.length) return null;
+  const alts = keywords.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+  return new RegExp(`\\b(?:${alts})\\b`, "i");
+}
+
+const keywordTagsEl = $("keywordTags");
+const keywordInputEl = $("keywordInput");
+
+function setKeywords(list) {
+  const next = uniqueKeywords(list);
+  const same = next.length === configKeywords().length
+    && next.every((k, i) => k.toLowerCase() === configKeywords()[i].toLowerCase());
+  // Matching config.json again is the same as having no override.
+  if (same) { try { localStorage.removeItem(LS_KEYWORDS); } catch {} }
+  else lsSet(LS_KEYWORDS, next);
+  renderKeywordTags();
+  render();
+}
+
+function renderKeywordTags() {
+  const tags = getEffectiveKeywords();
+  keywordTagsEl.querySelectorAll(".keyword-tag").forEach(el => el.remove());
+  for (const tag of tags) {
+    const el = document.createElement("span");
+    el.className = "keyword-tag";
+    const label = document.createElement("span");
+    label.textContent = tag;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "keyword-tag-remove";
+    remove.textContent = "×";
+    remove.title = remove.ariaLabel = `Remove ${tag}`;
+    remove.addEventListener("click", () =>
+      setKeywords(getEffectiveKeywords().filter(k => k.toLowerCase() !== tag.toLowerCase())));
+    el.append(label, remove);
+    keywordTagsEl.insertBefore(el, keywordInputEl);
+  }
+  $("keywordReset").hidden = keywordOverride() === null;
+}
+
+function addKeywords(raw) {
+  const additions = String(raw || "").split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
+  keywordInputEl.value = "";
+  if (additions.length) setKeywords([...getEffectiveKeywords(), ...additions]);
+}
+
+keywordInputEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" || e.key === "," || e.key === ";") {
+    e.preventDefault();
+    addKeywords(keywordInputEl.value);
+  } else if (e.key === "Backspace" && keywordInputEl.value === "") {
+    const current = getEffectiveKeywords();
+    if (current.length) { e.preventDefault(); setKeywords(current.slice(0, -1)); }
+  }
+});
+// Commit a half-typed keyword when focus leaves, without pulling focus back.
+keywordInputEl.addEventListener("blur", () => {
+  if (keywordInputEl.value.trim()) addKeywords(keywordInputEl.value);
+});
+keywordInputEl.addEventListener("paste", (e) => {
+  const text = (e.clipboardData || window.clipboardData).getData("text");
+  if (/[\n,;]/.test(text)) { e.preventDefault(); addKeywords(keywordInputEl.value + text); }
+});
+$("keywordReset").addEventListener("click", () => {
+  try { localStorage.removeItem(LS_KEYWORDS); } catch {}
+  renderKeywordTags();
+  render();
+});
+
+renderKeywordTags();
+{
+  const saved = (lsGet(LS_FILTERS, {}) || {}).work_arrangement;
+  $("loc").value = ["remote", "hybrid", "other"].includes(saved) ? saved : "";
+}
 
 // Refresh: over HTTP via serve.py it triggers a real re-fetch, then reloads.
 // On a static host (GitHub Pages) or file://, there's no backend to re-scrape,
@@ -479,4 +431,3 @@ $("refresh").addEventListener("click", async () => {
 });
 
 initPrefs();
-})();

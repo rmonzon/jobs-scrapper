@@ -153,9 +153,9 @@
   .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px;
     background: var(--blue2); color: oklch(0.12 0.02 260); font-size: 10px; font-weight: 700;
     letter-spacing: .08em; }
-  .chip { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px;
+  .chip { display: inline-block; padding: 3px 10px; border-radius: 999px;
     font-size: 12px; font-weight: 500; white-space: nowrap; max-width: 100%;
-    overflow: hidden; text-overflow: ellipsis; }
+    overflow: hidden; text-overflow: ellipsis; vertical-align: middle; box-sizing: border-box; }
   .chip.remote { background: oklch(0.25 0.1 160); color: oklch(0.72 0.16 160); }
   .chip.hybrid { background: oklch(0.25 0.09 85); color: oklch(0.78 0.15 85); }
   .chip.onsite { background: oklch(0.24 0.03 240); color: oklch(0.72 0.05 240); }
@@ -182,14 +182,28 @@
   .iconbtn.drop:hover { color: oklch(0.72 0.18 25); border-color: oklch(0.45 0.14 25);
     background: oklch(0.22 0.06 25); }
 
-  /* Tracked / following panel — pinned at the top, always visible */
+  /* Tracked / following panel — pinned at the top, collapsed to a summary by default */
   .tracked { margin: 16px 32px 0; background: var(--panel);
     border: 1px solid oklch(0.34 0.07 85); border-radius: 12px; overflow: hidden; }
   .tracked-head { display: flex; align-items: center; gap: 10px; padding: 11px 20px;
-    border-bottom: 1px solid var(--line); background: oklch(0.19 0.035 85); }
+    width: 100%; margin: 0; border: none; border-bottom: 1px solid var(--line); background: oklch(0.19 0.035 85);
+    font: inherit; color: inherit; text-align: left; cursor: pointer; }
+  .tracked-head:hover { background: oklch(0.21 0.04 85); }
   .tracked-title { font-size: 11px; font-weight: 700; color: oklch(0.84 0.15 85);
     letter-spacing: .1em; text-transform: uppercase; }
   .tracked-ct { font-size: 12px; color: var(--muted2); }
+  .tracked-caret { margin-left: auto; flex-shrink: 0; color: oklch(0.7 0.1 85);
+    transition: transform .15s; }
+  .tracked-caret.open { transform: rotate(180deg); }
+
+  /* "N no longer available" sub-group — collapsed within the panel until expanded */
+  .gone-toggle { display: flex; align-items: center; gap: 8px; width: 100%; margin: 0;
+    padding: 10px 20px; border: none; border-left: 3px solid oklch(0.6 0.18 25);
+    background: oklch(0.17 0.03 25); color: oklch(0.72 0.1 25);
+    font: 600 12.5px 'DM Sans', sans-serif; text-align: left; cursor: pointer; }
+  .gone-toggle:hover { background: oklch(0.19 0.035 25); }
+  .gone-toggle .car { margin-left: auto; flex-shrink: 0; transition: transform .15s; }
+  .gone-toggle .car.open { transform: rotate(180deg); }
 
   /* No-longer-available highlight (tracked role that vanished from the feed) */
   .row.gone { background: oklch(0.2 0.045 25); border-left-color: oklch(0.6 0.18 25); }
@@ -214,18 +228,6 @@
   .system-filters-title { font-size: 10px; font-weight: 700; color: var(--muted);
     text-transform: uppercase; letter-spacing: .1em; margin-bottom: 12px; }
   .system-filters-content { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
-  .filter-checkbox { display: flex; align-items: center; gap: 6px; font-size: 13px;
-    cursor: pointer; }
-  .filter-checkbox input { cursor: pointer; }
-  .filter-select { display: inline-flex; align-items: center; gap: 8px; color: var(--text);
-    font-size: 13px; font-weight: 600; white-space: nowrap; }
-  .filter-select select { min-width: 108px; height: 32px; padding: 0 28px 0 10px;
-    border: 1px solid var(--inputbd); border-radius: 6px; background: var(--input);
-    color: var(--text); font: 500 12px 'DM Sans', sans-serif; cursor: pointer;
-    appearance: auto; }
-  .filter-select select:hover { border-color: oklch(0.4 0.08 252); }
-  .filter-select select:focus-visible { outline: 2px solid oklch(0.55 0.12 252);
-    outline-offset: 1px; }
   .filter-keywords { display: flex; align-items: center; gap: 8px; font-size: 13px;
     min-width: 0; }
   .keywords-label { color: var(--text); font-weight: 600; }
@@ -239,26 +241,6 @@
     font: 12px 'DM Sans', sans-serif; cursor: pointer; transition: all .12s; }
   .edit-keywords-btn:hover { border-color: oklch(0.4 0.08 252); color: var(--text-hi); }
 
-  /* Modal */
-  .modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;
-    z-index: 100; }
-  .modal[hidden] { display: none; }
-  .modal-content { background: var(--panel); border: 1px solid var(--line);
-    border-radius: 12px; max-width: 500px; width: 90%; max-height: 80vh; overflow-y: auto; }
-  .modal-header { display: flex; align-items: center; justify-content: space-between;
-    padding: 20px 24px; border-bottom: 1px solid var(--line); }
-  .modal-header h2 { margin: 0; font-size: 16px; font-weight: 700; }
-  .modal-close { padding: 0; width: 32px; height: 32px; display: grid; place-items: center;
-    border: none; background: transparent; color: var(--muted2); font-size: 24px;
-    cursor: pointer; line-height: 1; transition: color .12s; }
-  .modal-close:hover { color: var(--text-hi); }
-  .modal-body { padding: 16px 24px 20px; }
-  .modal-body p { margin: 0 0 10px; font-size: 13px; color: var(--muted2); }
-  .keyword-field { width: 100%; min-height: 0; padding: 8px 10px;
-    border: 1.5px solid var(--inputbd); border-radius: 8px; background: var(--input);
-    display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
-  .keyword-field:focus-within { border-color: oklch(0.4 0.08 252); }
   .keyword-tags { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; flex: 1; min-width: 0; }
   .keyword-tag { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px;
     border-radius: 999px; background: oklch(0.23 0.06 252); border: 1px solid oklch(0.35 0.08 252);
@@ -269,21 +251,13 @@
   .keyword-input { flex: 1 1 120px; min-width: 100px; border: none; outline: none; background: transparent;
     color: var(--text-hi); font: 13px 'DM Sans', sans-serif; line-height: 1.5; padding: 5px 0; margin-top: 1px; }
   .keyword-input::placeholder { color: var(--muted); }
-  .modal-footer { display: flex; align-items: center; justify-content: flex-end; gap: 12px;
-    padding: 16px 24px; border-top: 1px solid var(--line); }
-  .btn-primary, .btn-secondary { padding: 8px 16px; border-radius: 7px; border: none;
-    font: 600 13px 'DM Sans', sans-serif; cursor: pointer; transition: all .12s; }
-  .btn-primary { background: var(--blue); color: #fff; }
-  .btn-primary:hover { background: var(--blue2); }
-  .btn-secondary { border: 1.5px solid var(--inputbd); background: transparent;
-    color: var(--muted2); }
-  .btn-secondary:hover { border-color: oklch(0.4 0.08 252); color: var(--text-hi); }
 
   @media (max-width: 720px) {
     .nav, .head, .banner, .stats, .panel { padding-left: 16px; padding-right: 16px; }
     .nav, .head { padding-left: 16px; padding-right: 16px; }
     .banner, .panel, .tracked, .system-filters { margin-left: 16px; margin-right: 16px; }
     .stats { grid-template-columns: 1fr 1fr; }
+    /* Location + Updated are hidden, so the grid drops those two tracks. */
     .c-loc, .thead .c-loc, .c-upd, .thead .c-upd { display: none; }
-    .c-type, .thead .c-type { width: 82px; }
+    .row, .thead { grid-template-columns: 36px minmax(0, 1fr) 68px 82px 70px 70px; }
   }
