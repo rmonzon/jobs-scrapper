@@ -17,7 +17,9 @@ Adapters use only the standard library so the scraper runs under cron with no
 
 from __future__ import annotations
 
+import email.utils
 import json
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -27,18 +29,52 @@ from scraper.filters import work_arrangement
 USER_AGENT = "jobs-scrapper/1.0 (+personal job-tracker)"
 TIMEOUT = 30
 
+# Transient HTTP statuses worth retrying (rate limiting and gateway hiccups).
+RETRY_STATUSES = {429, 502, 503, 504}
+MAX_ATTEMPTS = 4
+BACKOFF_BASE = 2      # seconds; doubles each retry: 2, 4, 8
+MAX_RETRY_WAIT = 60   # cap on any single wait, including a server's Retry-After
+# Pause between pages of a paginated provider so we don't trip rate limits.
+PAGE_DELAY = 1.0
+
 
 class FetchError(RuntimeError):
     """Raised when a provider can't be reached or returns unusable data."""
 
 
+def _retry_delay(exc: urllib.error.HTTPError, attempt: int) -> float:
+    """Seconds to wait before retrying: the server's Retry-After if it sent one
+    (either delta-seconds or an HTTP date), else exponential backoff."""
+    retry_after = (exc.headers.get("Retry-After") or "").strip() if exc.headers else ""
+    delay = None
+    if retry_after.isdigit():
+        delay = int(retry_after)
+    elif retry_after:
+        try:
+            when = email.utils.parsedate_to_datetime(retry_after)
+            delay = when.timestamp() - time.time()
+        except (TypeError, ValueError):
+            pass
+    if delay is None or delay < 0:
+        delay = BACKOFF_BASE * 2 ** attempt
+    return min(delay, MAX_RETRY_WAIT)
+
+
 def _get_json(url: str):
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-            return json.load(resp)
-    except (urllib.error.URLError, json.JSONDecodeError, TimeoutError) as exc:
-        raise FetchError(f"{url}: {exc}") from exc
+    for attempt in range(MAX_ATTEMPTS):
+        try:
+            with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+                return json.load(resp)
+        except urllib.error.HTTPError as exc:
+            if exc.code not in RETRY_STATUSES or attempt == MAX_ATTEMPTS - 1:
+                raise FetchError(f"{url}: {exc}") from exc
+            delay = _retry_delay(exc, attempt)
+            print(f"[retry] HTTP {exc.code} from {url}; "
+                  f"retrying in {delay:.0f}s ({attempt + 1}/{MAX_ATTEMPTS - 1})")
+            time.sleep(delay)
+        except (urllib.error.URLError, json.JSONDecodeError, TimeoutError) as exc:
+            raise FetchError(f"{url}: {exc}") from exc
 
 
 def _norm(job_id, title, location, url, updated_at, offices=None, *,
@@ -103,6 +139,8 @@ def eightfold(cfg: dict) -> list[dict]:
     start = 0
     out = []
     while True:
+        if start:
+            time.sleep(PAGE_DELAY)
         qs = urllib.parse.urlencode(
             {"domain": domain, "start": start, "num": 50})
         data = _get_json(f"{base}/api/apply/v2/jobs?{qs}")

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -84,7 +85,14 @@ def run(config_path: Path, data_dir: Path, seed: bool) -> int:
 
     out = build_dashboard(data_dir, ROOT / "dashboard", config_path)
     print(f"[dashboard] {out}")
-    return 1 if errors else 0
+
+    # A single company failing (e.g. one rate-limited API) shouldn't block the
+    # rest of the run from being published: the dashboard already surfaces the
+    # error via the run-status badge. Only fail when nothing succeeded.
+    if errors and os.environ.get("GITHUB_ACTIONS") == "true":
+        for err in errors:
+            print(f"::warning title=Fetch failed::{err}")
+    return 1 if errors and len(errors) == len(results) else 0
 
 
 def main() -> None:
